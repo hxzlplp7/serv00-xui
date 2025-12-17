@@ -416,7 +416,7 @@ generate_dokodemo_config() {
 EOF
 }
 
-# 添加任意门规则到Xray配置
+# 添加任意门规则到x-ui数据库
 add_dokodemo_rule() {
     local listen_port=$1
     local target_host=$2
@@ -427,32 +427,86 @@ add_dokodemo_rule() {
     init_dokodemo
     
     local rule_tag="dokodemo_${listen_port}"
-    local timestamp=$(date +%s)
+    local db_path="$HOME/x-ui/x-ui.db"
     
-    # 读取现有规则
-    local rules_json=$(cat "$DOKODEMO_RULES")
+    # 检查数据库是否存在
+    if [[ ! -f "$db_path" ]]; then
+        LOGE "x-ui数据库不存在，请先安装x-ui"
+        return 1
+    fi
     
-    # 创建新规则
-    local new_rule=$(cat << EOF
+    # 构建 dokodemo-door 入站配置 JSON
+    local settings_json=$(cat << SETTINGS
 {
-    "tag": "$rule_tag",
-    "listen_port": $listen_port,
-    "target_host": "$target_host",
-    "target_port": $target_port,
-    "original_link": "$original_link",
-    "node_name": "$node_name",
-    "created_at": $timestamp
+    "address": "$target_host",
+    "port": $target_port,
+    "network": "tcp,udp"
 }
-EOF
+SETTINGS
 )
     
-    # 添加到规则列表
-    echo "$rules_json" | sed "s/\"rules\":\[/\"rules\":[$new_rule,/" | sed 's/,\]/]/' > "$DOKODEMO_RULES"
+    local stream_settings='{"network":"tcp","security":"none","tcpSettings":{"header":{"type":"none"}}}'
+    local sniffing='{"enabled":true,"destOverride":["http","tls"]}'
     
-    # 生成Xray配置片段
-    generate_dokodemo_config "$listen_port" "$target_host" "$target_port" "$rule_tag" > "$DOKODEMO_DIR/${rule_tag}.json"
+    # 使用 sqlite3 直接插入到数据库
+    local remark="[中转]${node_name}"
     
-    LOGI "任意门规则已添加: 本地端口 $listen_port -> $target_host:$target_port"
+    # 检查端口是否已存在
+    local existing=$(sqlite3 "$db_path" "SELECT id FROM inbounds WHERE port = $listen_port;" 2>/dev/null)
+    if [[ -n "$existing" ]]; then
+        LOGE "端口 $listen_port 已被其他入站规则使用"
+        return 1
+    fi
+    
+    # 插入新的入站规则
+    sqlite3 "$db_path" << SQL
+INSERT INTO inbounds (user_id, up, down, total, remark, enable, expiry_time, listen, port, protocol, settings, stream_settings, tag, sniffing)
+VALUES (
+    1,
+    0,
+    0,
+    0,
+    '$remark',
+    1,
+    0,
+    '',
+    $listen_port,
+    'dokodemo-door',
+    '$settings_json',
+    '$stream_settings',
+    '$rule_tag',
+    '$sniffing'
+);
+SQL
+
+    if [[ $? -eq 0 ]]; then
+        LOGI "任意门规则已添加到数据库: 本地端口 $listen_port -> $target_host:$target_port"
+        
+        # 保存规则信息到本地文件（用于显示）
+        local timestamp=$(date +%s)
+        echo "{\"tag\":\"$rule_tag\",\"listen_port\":$listen_port,\"target_host\":\"$target_host\",\"target_port\":$target_port,\"node_name\":\"$node_name\",\"created_at\":$timestamp}" >> "$DOKODEMO_DIR/rules.log"
+        
+        # 重启 x-ui 和 Xray 使配置生效
+        LOGI "正在重启 x-ui 使配置生效..."
+        stop_x-ui
+        sleep 1
+        cd ~/x-ui
+        nohup ./x-ui run > ./x-ui.log 2>&1 &
+        sleep 2
+        
+        # 检查是否启动成功
+        local pid=$(pgrep -f "./x-ui run")
+        if [[ -n "$pid" ]]; then
+            LOGI "x-ui 重启成功，规则已生效！"
+        else
+            LOGE "x-ui 重启失败，请手动重启"
+        fi
+        
+        return 0
+    else
+        LOGE "添加规则失败"
+        return 1
+    fi
 }
 
 # 生成中转后的节点链接
@@ -764,11 +818,7 @@ add_dokodemo_manual() {
     echo -e "目标地址: ${yellow}$target_host:$target_port${plain}"
     echo -e "${green}========================================${plain}"
     echo ""
-    echo -e "${yellow}请在x-ui面板中添加对应的入站规则:${plain}"
-    echo -e "协议: ${cyan}dokodemo-door${plain}"
-    echo -e "端口: ${cyan}$listen_port${plain}"
-    echo -e "目标地址: ${cyan}$target_host${plain}"
-    echo -e "目标端口: ${cyan}$target_port${plain}"
+    echo -e "${green}✅ 规则已自动添加并生效！${plain}"
     echo ""
     
     before_show_menu
@@ -874,20 +924,13 @@ quick_relay_node() {
     echo ""
     
     if [[ -n "$relay_link" ]]; then
-        echo -e "${green}中转后的节点链接:${plain}"
+        echo -e "${green}中转后的节点链接（可直接使用）:${plain}"
         echo -e "${cyan}$relay_link${plain}"
         echo ""
     fi
     
-    echo -e "${yellow}请在x-ui面板中添加以下入站规则:${plain}"
-    echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo -e "  协议: ${green}dokodemo-door${plain}"
-    echo -e "  监听IP: ${green}0.0.0.0${plain} (或留空)"
-    echo -e "  端口: ${green}$listen_port${plain}"
-    echo -e "  目标地址: ${green}$target_host${plain}"
-    echo -e "  目标端口: ${green}$target_port${plain}"
-    echo -e "  网络: ${green}tcp,udp${plain}"
-    echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo -e "${green}✅ 规则已自动添加并生效！${plain}"
+    echo -e "${yellow}提示: 你可以在面板的入站列表中查看此规则${plain}"
     echo ""
     
     before_show_menu
