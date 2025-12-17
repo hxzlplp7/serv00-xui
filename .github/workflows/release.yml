@@ -10,64 +10,63 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    runs-on: ubuntu-latest
-    outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        
-      - name: Create Release
-        id: create_release
-        uses: softprops/action-gh-release@v1
-        with:
-          draft: true
-          prerelease: false
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   freebsdamd64build:
     name: Build x-ui FreeBSD amd64
-    needs: release
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - name: Build in FreeBSD
+        uses: vmactions/freebsd-vm@v1
         with:
-          go-version: '1.21'
+          usesh: true
+          prepare: |
+            pkg install -y go git wget unzip
+          run: |
+            # 构建二进制文件（启用 CGO）
+            echo "Building x-ui..."
+            CGO_ENABLED=1 go build -o x-ui -v main.go
+            
+            # 创建打包目录
+            mkdir -p x-ui-pkg/bin
+            
+            # 复制文件
+            mv x-ui x-ui-pkg/x-ui
+            cp x-ui.sh x-ui-pkg/x-ui.sh
+            
+            # 下载 Xray
+            cd x-ui-pkg/bin
+            fetch https://github.com/XTLS/Xray-core/releases/latest/download/Xray-freebsd-64.zip
+            unzip Xray-freebsd-64.zip
+            rm -f Xray-freebsd-64.zip geoip.dat geosite.dat
+            fetch https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat
+            fetch https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat
+            mv xray xray-freebsd-amd64
+            cd ../..
+            
+            # 重命名目录
+            mv x-ui-pkg x-ui
+            
+            # 打包
+            echo "Packaging..."
+            tar -zcvf x-ui-freebsd-amd64.tar.gz x-ui
+            
+            echo "Build completed!"
+            ls -la x-ui-freebsd-amd64.tar.gz
+            
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: x-ui-freebsd-amd64
+          path: x-ui-freebsd-amd64.tar.gz
           
-      - name: Build FreeBSD amd64 version
-        run: |
-          # 构建二进制文件到临时名称
-          CGO_ENABLED=0 GOOS=freebsd GOARCH=amd64 go build -o x-ui-bin -v main.go
-          
-          # 创建打包目录
-          mkdir -p x-ui/bin
-          
-          # 复制文件
-          mv x-ui-bin x-ui/x-ui
-          cp x-ui.sh x-ui/x-ui.sh
-          
-          # 下载 Xray
-          cd x-ui/bin
-          wget https://github.com/XTLS/Xray-core/releases/latest/download/Xray-freebsd-64.zip
-          unzip Xray-freebsd-64.zip
-          rm -f Xray-freebsd-64.zip geoip.dat geosite.dat
-          wget https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat
-          wget https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat
-          mv xray xray-freebsd-amd64
-          cd ../..
-          
-      - name: Package
-        run: tar -zcvf x-ui-freebsd-amd64.tar.gz x-ui
-        
-      - name: Upload Release Asset
+      - name: Create Release and Upload
         uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
         with:
           files: x-ui-freebsd-amd64.tar.gz
+          draft: false
+          prerelease: false
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
