@@ -1125,6 +1125,48 @@ disable() {
     fi
 }
 
+# 查看运行日志
+show_log() {
+    echo -e "${green}========== x-ui 运行日志 ==========${plain}"
+    echo -e "${yellow}日志文件位置: ~/x-ui/x-ui.log${plain}"
+    echo ""
+    
+    if [[ -f ~/x-ui/x-ui.log ]]; then
+        echo -e "${cyan}--- 最近 50 行日志 ---${plain}"
+        tail -n 50 ~/x-ui/x-ui.log
+        echo ""
+        echo -e "${cyan}--- 日志结束 ---${plain}"
+    else
+        LOGE "日志文件不存在"
+    fi
+    
+    if [[ $# == 0 ]]; then
+        before_show_menu
+    fi
+}
+
+# 清空日志
+clear_log() {
+    confirm "确定要清空日志吗?" "n"
+    if [[ $? != 0 ]]; then
+        if [[ $# == 0 ]]; then
+            show_menu
+        fi
+        return 0
+    fi
+    
+    if [[ -f ~/x-ui/x-ui.log ]]; then
+        cat /dev/null > ~/x-ui/x-ui.log
+        LOGI "日志已清空"
+    else
+        LOGE "日志文件不存在"
+    fi
+    
+    if [[ $# == 0 ]]; then
+        before_show_menu
+    fi
+}
+
 update_shell() {
     wget -O ~/x-ui.sh -N --no-check-certificate https://raw.githubusercontent.com/hxzlplp7/serv00-xui/main/x-ui.sh
     if [[ $? != 0 ]]; then
@@ -1276,11 +1318,14 @@ show_menu() {
   ${green}13.${plain} 设置 x-ui 开机自启
   ${green}14.${plain} 取消 x-ui 开机自启
 ————————————————
+  ${green}16.${plain} 查看运行日志
+  ${green}17.${plain} 清空日志
+————————————————
   ${cyan}15.${plain} ${cyan}Xray 任意门中转${plain} ${yellow}[新功能]${plain}
 ————————————————
  "
     show_status
-    echo && read -p "请输入选择 [0-15]: " num
+    echo && read -p "请输入选择 [0-17]: " num
 
     case "${num}" in
     0)
@@ -1331,8 +1376,14 @@ show_menu() {
     15)
         dokodemo_menu
         ;;
+    16)
+        check_install && show_log
+        ;;
+    17)
+        check_install && clear_log
+        ;;
     *)
-        LOGE "请输入正确的数字 [0-15]"
+        LOGE "请输入正确的数字 [0-17]"
         ;;
     esac
 }
