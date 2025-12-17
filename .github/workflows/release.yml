@@ -42,13 +42,18 @@ jobs:
           
       - name: Build FreeBSD amd64 version
         run: |
-          CGO_ENABLED=0 GOOS=freebsd GOARCH=amd64 go build -o x-ui -v main.go
-          mkdir -p x-ui-pkg
-          cp x-ui x-ui-pkg/x-ui
-          cp x-ui.sh x-ui-pkg/x-ui.sh
-          cd x-ui-pkg
-          mkdir bin
-          cd bin
+          # 构建二进制文件到临时名称
+          CGO_ENABLED=0 GOOS=freebsd GOARCH=amd64 go build -o x-ui-bin -v main.go
+          
+          # 创建打包目录
+          mkdir -p x-ui/bin
+          
+          # 复制文件
+          mv x-ui-bin x-ui/x-ui
+          cp x-ui.sh x-ui/x-ui.sh
+          
+          # 下载 Xray
+          cd x-ui/bin
           wget https://github.com/XTLS/Xray-core/releases/latest/download/Xray-freebsd-64.zip
           unzip Xray-freebsd-64.zip
           rm -f Xray-freebsd-64.zip geoip.dat geosite.dat
@@ -56,7 +61,6 @@ jobs:
           wget https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat
           mv xray xray-freebsd-amd64
           cd ../..
-          mv x-ui-pkg x-ui
           
       - name: Package
         run: tar -zcvf x-ui-freebsd-amd64.tar.gz x-ui
