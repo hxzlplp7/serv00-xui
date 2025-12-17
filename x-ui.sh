@@ -284,6 +284,26 @@ parse_http() {
     echo "http|$host|$port|$name"
 }
 
+# 解析AnyTLS链接
+parse_anytls() {
+    local link="$1"
+    # anytls://password@host:port?params#name
+    local content="${link#anytls://}"
+    local name="${content##*#}"
+    name=$(urldecode "$name")
+    content="${content%#*}"
+    
+    local password="${content%%@*}"
+    local rest="${content#*@}"
+    local hostport="${rest%%\?*}"
+    local params="${rest#*\?}"
+    
+    local host="${hostport%:*}"
+    local port="${hostport##*:}"
+    
+    echo "anytls|$host|$port|$name|$password|$params"
+}
+
 # 自动识别并解析节点
 parse_node() {
     local link="$1"
@@ -300,6 +320,8 @@ parse_node() {
         parse_hysteria2 "$link"
     elif [[ "$link" == tuic://* ]]; then
         parse_tuic "$link"
+    elif [[ "$link" == anytls://* ]]; then
+        parse_anytls "$link"
     elif [[ "$link" == socks://* ]] || [[ "$link" == socks5://* ]]; then
         parse_socks "$link"
     elif [[ "$link" == http://* ]] || [[ "$link" == https://* ]]; then
@@ -515,6 +537,15 @@ generate_relay_link() {
             ;;
         http)
             new_link="http://${server_ip}:${relay_port}#[中转]${node_name}"
+            ;;
+        anytls)
+            local password=$(echo "$parsed" | cut -d'|' -f5)
+            local params=$(echo "$parsed" | cut -d'|' -f6)
+            new_link="anytls://${password}@${server_ip}:${relay_port}"
+            if [[ -n "$params" && "$params" != "$password" ]]; then
+                new_link="${new_link}?${params}"
+            fi
+            new_link="${new_link}#[中转]${node_name}"
             ;;
         *)
             new_link=""
@@ -747,7 +778,7 @@ add_dokodemo_manual() {
 quick_relay_node() {
     echo ""
     echo -e "${green}========== 快速节点中转 ==========${plain}"
-    echo -e "${yellow}支持的协议: vless, vmess, trojan, ss, hysteria2, tuic, socks, http${plain}"
+    echo -e "${yellow}支持的协议: vless, vmess, trojan, ss, hysteria2, tuic, anytls, socks, http${plain}"
     echo ""
     
     read -p "请粘贴节点链接: " node_link

@@ -72,7 +72,7 @@ x-ui dokodemo     # 任意门中转菜单
 1. 运行 `x-ui` 进入管理菜单
 2. 选择 `15. Xray 任意门中转`
 3. 选择 `4. 快速中转节点`
-4. 粘贴你的节点链接（支持 vless/vmess/trojan/ss/hy2/tuic/socks/http）
+4. 粘贴你的节点链接（支持 vless/vmess/trojan/ss/hy2/tuic/anytls/socks/http）
 5. 选择端口分配方式
 6. 脚本会自动解析节点并生成中转配置和新的节点链接
 7. 在 x-ui 面板中按照提示添加入站规则
@@ -87,6 +87,7 @@ x-ui dokodemo     # 任意门中转菜单
 | Shadowsocks | `ss://base64@host:port#name` |
 | Hysteria2 | `hysteria2://password@host:port?params#name` |
 | TUIC | `tuic://uuid:password@host:port?params#name` |
+| AnyTLS | `anytls://password@host:port?params#name` |
 | Socks | `socks://host:port` 或 `socks5://user:pass@host:port` |
 | HTTP | `http://host:port` |
 
