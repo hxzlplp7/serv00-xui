@@ -3,6 +3,7 @@
 red='\033[0;31m'
 green='\033[0;32m'
 yellow='\033[0;33m'
+cyan='\033[0;36m'
 plain='\033[0m'
 
 cd ~
@@ -144,22 +145,55 @@ install_x-ui() {
     echo "@reboot cd $cur_dir/x-ui && nohup ./x-ui run > ./x-ui.log 2>&1 &" >> x-ui.cron
     crontab x-ui.cron
     rm x-ui.cron
+    
+    # 创建快捷命令
+    echo -e "${yellow}正在创建 x-ui 快捷命令...${plain}"
+    mkdir -p ~/bin
+    cat > ~/bin/x-ui << 'SHORTCUT'
+#!/bin/bash
+~/x-ui.sh "$@"
+SHORTCUT
+    chmod +x ~/bin/x-ui
+    
+    # 添加 ~/bin 到 PATH（如果还没有）
+    shell_rc=""
+    if [[ -f ~/.bashrc ]]; then
+        shell_rc=~/.bashrc
+    elif [[ -f ~/.profile ]]; then
+        shell_rc=~/.profile
+    elif [[ -f ~/.shrc ]]; then
+        shell_rc=~/.shrc
+    fi
+    
+    if [[ -n "$shell_rc" ]]; then
+        if ! grep -q 'export PATH=.*\$HOME/bin' "$shell_rc" 2>/dev/null; then
+            echo 'export PATH="$HOME/bin:$PATH"' >> "$shell_rc"
+            echo -e "${green}已将 ~/bin 添加到 PATH${plain}"
+        fi
+    fi
+    
+    # 临时添加到当前会话
+    export PATH="$HOME/bin:$PATH"
+    echo -e "${green}x-ui 快捷命令创建成功！${plain}"
+    
     nohup ./x-ui run > ./x-ui.log 2>&1 &
     echo -e "${green}x-ui v${last_version}${plain} 安装完成，面板已启动，"
     echo -e ""
-    echo -e "x-ui 管理脚本使用方法: "
+    echo -e "${cyan}x-ui 快捷命令使用方法:${plain}"
     echo -e "----------------------------------------------"
-    echo -e "/home/${USER}/x-ui.sh               - 显示管理菜单 (功能更多)"
-    echo -e "/home/${USER}/x-ui.sh  start        - 启动 x-ui 面板"
-    echo -e "/home/${USER}/x-ui.sh  stop         - 停止 x-ui 面板"
-    echo -e "/home/${USER}/x-ui.sh  restart      - 重启 x-ui 面板"
-    echo -e "/home/${USER}/x-ui.sh  status       - 查看 x-ui 状态"
-    echo -e "/home/${USER}/x-ui.sh  enable       - 设置 x-ui 开机自启"
-    echo -e "/home/${USER}/x-ui.sh  disable      - 取消 x-ui 开机自启"
-    echo -e "/home/${USER}/x-ui.sh  update       - 更新 x-ui 面板"
-    echo -e "/home/${USER}/x-ui.sh  install      - 安装 x-ui 面板"
-    echo -e "/home/${USER}/x-ui.sh  uninstall    - 卸载 x-ui 面板"
+    echo -e "${green}x-ui${plain}                - 显示管理菜单 (功能更多)"
+    echo -e "${green}x-ui start${plain}          - 启动 x-ui 面板"
+    echo -e "${green}x-ui stop${plain}           - 停止 x-ui 面板"
+    echo -e "${green}x-ui restart${plain}        - 重启 x-ui 面板"
+    echo -e "${green}x-ui status${plain}         - 查看 x-ui 状态"
+    echo -e "${green}x-ui enable${plain}         - 设置 x-ui 开机自启"
+    echo -e "${green}x-ui disable${plain}        - 取消 x-ui 开机自启"
+    echo -e "${green}x-ui update${plain}         - 更新 x-ui 面板"
+    echo -e "${green}x-ui install${plain}        - 安装 x-ui 面板"
+    echo -e "${green}x-ui uninstall${plain}      - 卸载 x-ui 面板"
+    echo -e "${green}x-ui dokodemo${plain}       - 任意门中转菜单"
     echo -e "----------------------------------------------"
+    echo -e "${yellow}提示: 如果 x-ui 命令不可用，请执行: source ~/.bashrc 或重新登录${plain}"
 }
 
 echo -e "${green}开始安装${plain}"
