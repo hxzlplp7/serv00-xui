@@ -1,9 +1,13 @@
 name: Release X-ui
+
 on:
   push:
     tags:
-      - 0.*
+      - '*'
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   release:
@@ -11,35 +15,38 @@ jobs:
     outputs:
       upload_url: ${{ steps.create_release.outputs.upload_url }}
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
       - name: Create Release
         id: create_release
-        uses: actions/create-release@v1
+        uses: softprops/action-gh-release@v1
+        with:
+          draft: true
+          prerelease: false
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: ${{ github.ref }}
-          draft: true
-          prerelease: true
+
   freebsdamd64build:
-    name: build x-ui amd64 version
+    name: Build x-ui FreeBSD amd64
     needs: release
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
+      
       - name: Set up Go
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v5
         with:
-          go-version: 1.18
-      - name: build freedbsd amd64 version
+          go-version: '1.21'
+          
+      - name: Build FreeBSD amd64 version
         run: |
-          CGO_ENABLED=1 GOOS=freebsd GOARCH=amd64 go build -o xui-release -v main.go
-          mkdir x-ui
-          cp xui-release x-ui/xui-release
-          cp x-ui.service x-ui/x-ui.service
-          cp x-ui.sh x-ui/x-ui.sh
-          cd x-ui
-          mv xui-release x-ui
+          CGO_ENABLED=0 GOOS=freebsd GOARCH=amd64 go build -o x-ui -v main.go
+          mkdir -p x-ui-pkg
+          cp x-ui x-ui-pkg/x-ui
+          cp x-ui.sh x-ui-pkg/x-ui.sh
+          cd x-ui-pkg
           mkdir bin
           cd bin
           wget https://github.com/XTLS/Xray-core/releases/latest/download/Xray-freebsd-64.zip
@@ -48,16 +55,15 @@ jobs:
           wget https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat
           wget https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat
           mv xray xray-freebsd-amd64
-          cd ..
-          cd ..
-      - name: package
+          cd ../..
+          mv x-ui-pkg x-ui
+          
+      - name: Package
         run: tar -zcvf x-ui-freebsd-amd64.tar.gz x-ui
-      - name: upload
-        uses: actions/upload-release-asset@v1
+        
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v1
+        with:
+          files: x-ui-freebsd-amd64.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.release.outputs.upload_url }}
-          asset_path: x-ui-freebsd-amd64.tar.gz
-          asset_name: x-ui-freebsd-amd64.tar.gz
-          asset_content_type: application/gzip
