@@ -1250,35 +1250,61 @@ uninstall() {
         echo ""
         LOGI "正在清理 devil 端口..."
         
-        # 从数据库中读取所有端口
+        local all_ports=""
+        
+        # 读取面板访问端口
+        if [[ -f "$HOME/x-ui/.panel_port" ]]; then
+            local panel_port=$(cat "$HOME/x-ui/.panel_port" 2>/dev/null)
+            if [[ -n "$panel_port" ]]; then
+                all_ports="$all_ports $panel_port"
+                LOGD "面板访问端口: $panel_port"
+            fi
+        fi
+        
+        # 读取流量监测端口
+        if [[ -f "$HOME/x-ui/.traffic_port" ]]; then
+            local traffic_port=$(cat "$HOME/x-ui/.traffic_port" 2>/dev/null)
+            if [[ -n "$traffic_port" ]]; then
+                all_ports="$all_ports $traffic_port"
+                LOGD "流量监测端口: $traffic_port"
+            fi
+        fi
+        
+        # 从数据库中读取所有入站端口
         local db_path="$HOME/x-ui/x-ui.db"
         if [[ -f "$db_path" ]]; then
-            # 获取所有入站端口
-            local ports=$(sqlite3 "$db_path" "SELECT DISTINCT port FROM inbounds;" 2>/dev/null | tr '\n' ' ')
-            
-            if [[ -n "$ports" ]]; then
-                LOGI "发现以下端口: $ports"
-                confirm "是否删除这些 devil 端口?" "y"
-                if [[ $? == 0 ]]; then
-                    for port in $ports; do
-                        # 尝试删除 TCP 端口
-                        if devil port list 2>/dev/null | grep -q "tcp $port"; then
-                            LOGD "删除 TCP 端口: $port"
-                            devil port del tcp $port 2>/dev/null && LOGI "✓ TCP/$port 已删除" || LOGD "TCP/$port 删除失败"
-                        fi
-                        
-                        # 尝试删除 UDP 端口
-                        if devil port list 2>/dev/null | grep -q "udp $port"; then
-                            LOGD "删除 UDP 端口: $port"
-                            devil port del udp $port 2>/dev/null && LOGI "✓ UDP/$port 已删除" || LOGD "UDP/$port 删除失败"
-                        fi
-                    done
-                else
-                    LOGD "跳过端口删除"
-                fi
-            else
-                LOGD "未发现需要删除的端口"
+            local inbound_ports=$(sqlite3 "$db_path" "SELECT DISTINCT port FROM inbounds;" 2>/dev/null | tr '\n' ' ')
+            if [[ -n "$inbound_ports" ]]; then
+                all_ports="$all_ports $inbound_ports"
+                LOGD "入站端口: $inbound_ports"
             fi
+        fi
+        
+        # 去重端口列表
+        all_ports=$(echo "$all_ports" | tr ' ' '\n' | sort -u | tr '\n' ' ')
+        
+        if [[ -n "$all_ports" ]]; then
+            LOGI "发现以下端口: $all_ports"
+            confirm "是否删除这些 devil 端口?" "y"
+            if [[ $? == 0 ]]; then
+                for port in $all_ports; do
+                    # 尝试删除 TCP 端口
+                    if devil port list 2>/dev/null | grep -q "tcp $port"; then
+                        LOGD "删除 TCP 端口: $port"
+                        devil port del tcp $port 2>/dev/null && LOGI "✓ TCP/$port 已删除" || LOGD "TCP/$port 删除失败"
+                    fi
+                    
+                    # 尝试删除 UDP 端口
+                    if devil port list 2>/dev/null | grep -q "udp $port"; then
+                        LOGD "删除 UDP 端口: $port"
+                        devil port del udp $port 2>/dev/null && LOGI "✓ UDP/$port 已删除" || LOGD "UDP/$port 删除失败"
+                    fi
+                done
+            else
+                LOGD "跳过端口删除"
+            fi
+        else
+            LOGD "未发现需要删除的端口"
         fi
         echo ""
     fi
