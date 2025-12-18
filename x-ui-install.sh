@@ -156,25 +156,25 @@ choose_port() {
     local default_port=$2
     local port_type=${3:-tcp}  # tcp 或 udp
     
-    echo ""
-    echo -e "${yellow}=== ${port_name} 端口配置 ===${plain}"
-    echo -e "  ${green}1.${plain} 手动指定端口"
-    echo -e "  ${green}2.${plain} 系统随机生成端口"
-    echo ""
-    read -p "请选择 [1-2, 默认2]: " port_choice
+    echo "" >&2
+    echo -e "${yellow}=== ${port_name} 端口配置 ===${plain}" >&2
+    echo -e "  ${green}1.${plain} 手动指定端口" >&2
+    echo -e "  ${green}2.${plain} 系统随机生成端口（推荐）" >&2
+    echo "" >&2
+    read -p "请选择 [1-2, 默认2]: " port_choice >&2
     port_choice=${port_choice:-2}
     
     local selected_port=""
     
     case "$port_choice" in
         1)
-            read -p "请输入${port_name}端口 [${default_port}]: " selected_port
+            read -p "请输入${port_name}端口 [${default_port}]: " selected_port >&2
             selected_port=${selected_port:-$default_port}
             
             # 使用 devil 添加端口
             if ! add_devil_port "$selected_port" "$port_type" "x-ui ${port_name}"; then
-                echo -e "${red}端口添加失败，是否重新选择? [y/n]${plain}"
-                read -p "" retry
+                echo -e "${red}端口添加失败，是否重新选择? [y/n]${plain}" >&2
+                read -p "" retry >&2
                 if [[ "$retry" == "y" || "$retry" == "Y" ]]; then
                     choose_port "$port_name" "$default_port" "$port_type"
                     return $?
@@ -186,14 +186,14 @@ choose_port() {
         2)
             selected_port=$(get_random_devil_port "$port_type" "x-ui ${port_name}")
             if [[ -z "$selected_port" ]]; then
-                echo -e "${red}随机端口获取失败${plain}"
+                echo -e "${red}随机端口获取失败${plain}" >&2
                 return 1
             fi
-            echo -e "${green}随机分配端口: ${selected_port}${plain}"
+            echo -e "${green}随机分配端口: ${selected_port}${plain}" >&2
             ;;
         *)
             selected_port=$(get_random_devil_port "$port_type" "x-ui ${port_name}")
-            echo -e "${green}随机分配端口: ${selected_port}${plain}"
+            echo -e "${green}随机分配端口: ${selected_port}${plain}" >&2
             ;;
     esac
     
