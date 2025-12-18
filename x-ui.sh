@@ -630,7 +630,13 @@ uninstall() {
     # 删除快捷命令
     if [[ -f ~/bin/x-ui ]]; then
         rm -f ~/bin/x-ui
-        LOGI "已删除快捷命令"
+        LOGI "已删除快捷命令 ~/bin/x-ui"
+    fi
+    
+    # 删除主脚本文件
+    if [[ -f ~/x-ui.sh ]]; then
+        rm -f ~/x-ui.sh
+        LOGI "已删除脚本 ~/x-ui.sh"
     fi
 
     echo ""
