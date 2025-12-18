@@ -137,17 +137,26 @@ add_devil_port() {
     while [ $retry -lt $max_retries ]; do
         LOGD "正在添加端口 ${port_type}/${port}... (尝试 $((retry+1))/$max_retries)"
         
-        # 执行 devil port add
+        # 执行 devil port add 并捕获输出和退出码
         local result=$(devil port add ${port_type} ${port} "${description}" 2>&1)
+        local exit_code=$?
         
-        if [[ $? -eq 0 ]] || echo "$result" | grep -qi "success\|successfully\|已添加"; then
+        # 显示 devil 命令的原始输出（用于调试）
+        if [[ -n "$result" ]]; then
+            LOGD "Devil 命令输出: $result"
+        fi
+        
+        if [[ $exit_code -eq 0 ]]; then
+            LOGI "✓ 端口 ${port_type}/${port} 添加成功"
+            return 0
+        elif echo "$result" | grep -qi "success\|successfully\|已添加"; then
             LOGI "✓ 端口 ${port_type}/${port} 添加成功"
             return 0
         elif echo "$result" | grep -qi "already\|exists\|已存在"; then
             LOGI "✓ 端口 ${port_type}/${port} 已存在"
             return 0
         else
-            LOGE "✗ 添加失败: $result"
+            LOGE "✗ 添加失败 (退出码: $exit_code): $result"
             ((retry++))
             if [ $retry -lt $max_retries ]; then
                 sleep 1
