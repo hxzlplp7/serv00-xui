@@ -1147,8 +1147,17 @@ quick_relay_node() {
     echo ""
     echo -e "${yellow}中转信息:${plain}"
     echo -e "  服务器IP: ${cyan}$server_ip${plain}"
-    echo -e "  监听端口: ${cyan}$listen_port${plain}"
+    echo -e "  监听端口: ${cyan}$listen_port (${port_type})${plain}"
     echo -e "  目标地址: ${cyan}$target_host:$target_port${plain}"
+    
+    # 检查并显示 devil 端口状态
+    if command -v devil >/dev/null 2>&1; then
+        if devil port list 2>/dev/null | grep -q "${port_type} ${listen_port}"; then
+            echo -e "  Devil端口: ${green}✓ 已添加${plain}"
+        else
+            echo -e "  Devil端口: ${yellow}⚠ 未添加（可能需要手动添加）${plain}"
+        fi
+    fi
     echo ""
     
     if [[ -n "$relay_link" ]]; then
