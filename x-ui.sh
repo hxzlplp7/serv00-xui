@@ -78,6 +78,139 @@ confirm_restart() {
     fi
 }
 
+# ==================== 系统类型检测 ====================
+
+# 检测系统类型 (serv00 / hostuno / unknown)
+detect_system_type() {
+    if [[ -f ~/x-ui/.system_type ]]; then
+        cat ~/x-ui/.system_type
+    elif command -v devil >/dev/null 2>&1; then
+        local devil_output=$(devil --help 2>&1)
+        if echo "$devil_output" | grep -qi "serv00"; then
+            echo "serv00"
+        elif echo "$devil_output" | grep -qi "hostuno"; then
+            echo "hostuno"
+        else
+            echo "serv00"
+        fi
+    else
+        echo "unknown"
+    fi
+}
+
+SYSTEM_TYPE=$(detect_system_type)
+
+# ==================== Devil 端口管理函数 ====================
+
+# 检查端口是否已被 devil 添加
+check_devil_port() {
+    local port=$1
+    local port_type=$2  # tcp 或 udp
+    
+    if ! command -v devil >/dev/null 2>&1; then
+        return 1
+    fi
+    
+    devil port list 2>/dev/null | grep -q "${port_type} ${port}"
+    return $?
+}
+
+# 使用 devil 添加端口，支持重试
+add_devil_port() {
+    local port=$1
+    local port_type=$2  # tcp 或 udp
+    local description=$3
+    local max_retries=${4:-5}
+    
+    if ! command -v devil >/dev/null 2>&1; then
+        LOGD "devil 命令不可用，跳过端口添加"
+        return 0
+    fi
+    
+    # 如果已经添加过，直接返回成功
+    if check_devil_port "$port" "$port_type"; then
+        LOGI "端口 ${port_type}/${port} 已存在"
+        return 0
+    fi
+    
+    local retry=0
+    while [ $retry -lt $max_retries ]; do
+        LOGD "正在添加端口 ${port_type}/${port}... (尝试 $((retry+1))/$max_retries)"
+        
+        # 执行 devil port add
+        local result=$(devil port add ${port_type} ${port} "${description}" 2>&1)
+        
+        if [[ $? -eq 0 ]] || echo "$result" | grep -qi "success\|successfully\|已添加"; then
+            LOGI "✓ 端口 ${port_type}/${port} 添加成功"
+            return 0
+        elif echo "$result" | grep -qi "already\|exists\|已存在"; then
+            LOGI "✓ 端口 ${port_type}/${port} 已存在"
+            return 0
+        else
+            LOGE "✗ 添加失败: $result"
+            ((retry++))
+            if [ $retry -lt $max_retries ]; then
+                sleep 1
+            fi
+        fi
+    done
+    
+    LOGE "端口 ${port_type}/${port} 添加失败，已重试 ${max_retries} 次"
+    return 1
+}
+
+# 获取随机可用端口并添加到 devil
+get_random_devil_port() {
+    local port_type=$1  # tcp 或 udp
+    local description=$2
+    local min_port=${3:-10000}
+    local max_port=${4:-65000}
+    local max_attempts=50
+    
+    if ! command -v devil >/dev/null 2>&1; then
+        # 如果没有 devil 命令，直接返回随机端口
+        echo $((RANDOM % (max_port - min_port + 1) + min_port))
+        return 0
+    fi
+    
+    local attempt=0
+    while [ $attempt -lt $max_attempts ]; do
+        local port=$((RANDOM % (max_port - min_port + 1) + min_port))
+        
+        # 检查端口是否被占用
+        if ! sockstat -l 2>/dev/null | grep -q ":$port "; then
+            # 尝试添加端口
+            if add_devil_port "$port" "$port_type" "$description"; then
+                echo "$port"
+                return 0
+            fi
+        fi
+        
+        ((attempt++))
+    done
+    
+    LOGE "无法找到可用端口"
+    return 1
+}
+
+# 检测协议类型 (tcp/udp/both)
+detect_protocol_type() {
+    local protocol=$1
+    
+    case "$protocol" in
+        hysteria2|hy2|tuic|quic)
+            echo "udp"
+            ;;
+        vless|vmess|trojan|ss|shadowsocks|socks|http|https|anytls)
+            echo "tcp"
+            ;;
+        *)
+            # 默认 TCP
+            echo "tcp"
+            ;;
+    esac
+}
+
 before_show_menu() {
     echo && echo -n -e "${yellow}按回车返回主菜单: ${plain}" && read temp
     show_menu
@@ -861,9 +994,14 @@ quick_relay_node() {
     echo -e "  名称: ${cyan}$node_name${plain}"
     echo ""
     
+    # 检测协议类型（TCP/UDP）
+    local port_type=$(detect_protocol_type "$protocol")
+    echo -e "${cyan}检测到协议类型: $port_type${plain}"
+    echo ""
+    
     # 选择本地端口
     echo -e "请选择本地监听端口方式:"
-    echo -e "  ${green}1.${plain} 随机生成端口"
+    echo -e "  ${green}1.${plain} 系统随机生成端口 (推荐)"
     echo -e "  ${green}2.${plain} 指定端口范围随机"
     echo -e "  ${green}3.${plain} 手动指定端口"
     echo ""
@@ -871,28 +1009,65 @@ quick_relay_node() {
     port_choice=${port_choice:-1}
     
     local listen_port=""
+    local description="[中转]${node_name}"
     
     case "${port_choice}" in
     1)
-        listen_port=$(get_available_port 10000 60000)
+        # 使用 devil 命令随机生成端口
+        listen_port=$(get_random_devil_port "$port_type" "$description" 10000 60000)
+        if [[ -z "$listen_port" ]]; then
+            LOGE "随机端口获取失败"
+            before_show_menu
+            return
+        fi
+        LOGI "随机分配 $port_type 端口: $listen_port"
         ;;
     2)
         read -p "请输入端口范围最小值 [默认10000]: " min_port
         read -p "请输入端口范围最大值 [默认60000]: " max_port
         min_port=${min_port:-10000}
         max_port=${max_port:-60000}
-        listen_port=$(get_available_port $min_port $max_port)
-        ;;
-    3)
-        read -p "请输入本地监听端口: " listen_port
-        if is_port_used $listen_port; then
-            LOGE "端口 $listen_port 已被占用"
+        listen_port=$(get_random_devil_port "$port_type" "$description" $min_port $max_port)
+        if [[ -z "$listen_port" ]]; then
+            LOGE "在指定范围内无法获取可用端口"
             before_show_menu
             return
         fi
+        LOGI "在范围 $min_port-$max_port 内随机分配 $port_type 端口: $listen_port"
+        ;;
+    3)
+        read -p "请输入本地监听端口: " listen_port
+        if [[ -z "$listen_port" ]]; then
+            LOGE "端口不能为空"
+            before_show_menu
+            return
+        fi
+        
+        # 尝试使用 devil 添加端口
+        if command -v devil >/dev/null 2>&1; then
+            if ! add_devil_port "$listen_port" "$port_type" "$description"; then
+                confirm "端口添加失败，是否继续? (可能导致端口不可用)" "n"
+                if [[ $? != 0 ]]; then
+                    before_show_menu
+                    return
+                fi
+            fi
+        else
+            # 如果没有 devil 命令，检查端口是否被占用
+            if sockstat -l 2>/dev/null | grep -q ":$listen_port "; then
+                LOGE "端口 $listen_port 已被占用"
+                before_show_menu
+                return
+            fi
+        fi
         ;;
     *)
-        listen_port=$(get_available_port 10000 60000)
+        listen_port=$(get_random_devil_port "$port_type" "$description" 10000 60000)
+        if [[ -z "$listen_port" ]]; then
+            LOGE "随机端口获取失败"
+            before_show_menu
+            return
+        fi
         ;;
     esac
     

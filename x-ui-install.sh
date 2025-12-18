@@ -31,26 +31,211 @@ fi
 
 echo "架构: ${arch}"
 
+# ==================== 系统类型检测 ====================
+detect_system_type() {
+    # 检测是 serv00 还是 hostuno
+    if [[ -f /usr/home/.system_type ]]; then
+        cat /usr/home/.system_type
+    elif command -v devil >/dev/null 2>&1; then
+        # 通过 devil 命令判断
+        local devil_output=$(devil --help 2>&1)
+        if echo "$devil_output" | grep -qi "serv00"; then
+            echo "serv00"
+        elif echo "$devil_output" | grep -qi "hostuno"; then
+            echo "hostuno"
+        else
+            # 默认按 serv00 处理
+            echo "serv00"
+        fi
+    else
+        echo "unknown"
+    fi
+}
+
+SYSTEM_TYPE=$(detect_system_type)
+echo -e "${cyan}检测到系统类型: ${SYSTEM_TYPE}${plain}"
+
+# ==================== Devil 端口管理函数 ====================
+
+# 检查端口是否已被 devil 添加
+check_devil_port() {
+    local port=$1
+    local port_type=$2  # tcp 或 udp
+    
+    if ! command -v devil >/dev/null 2>&1; then
+        return 1
+    fi
+    
+    # 检查端口是否已添加
+    devil port list | grep -q "${port_type} ${port}"
+    return $?
+}
+
+# 使用 devil 添加端口，支持重试
+add_devil_port() {
+    local port=$1
+    local port_type=$2  # tcp 或 udp
+    local description=$3
+    local max_retries=${4:-5}
+    
+    if ! command -v devil >/dev/null 2>&1; then
+        echo -e "${yellow}devil 命令不可用，跳过端口添加${plain}"
+        return 0
+    fi
+    
+    # 如果已经添加过，直接返回成功
+    if check_devil_port "$port" "$port_type"; then
+        echo -e "${green}端口 ${port_type}/${port} 已存在${plain}"
+        return 0
+    fi
+    
+    local retry=0
+    while [ $retry -lt $max_retries ]; do
+        echo -e "${yellow}正在添加端口 ${port_type}/${port}...${plain}"
+        
+        # 执行 devil port add
+        local result=$(devil port add ${port_type} ${port} "${description}" 2>&1)
+        
+        if [[ $? -eq 0 ]] || echo "$result" | grep -qi "success\|successfully\|已添加"; then
+            echo -e "${green}✓ 端口 ${port_type}/${port} 添加成功${plain}"
+            return 0
+        elif echo "$result" | grep -qi "already\|exists\|已存在"; then
+            echo -e "${green}✓ 端口 ${port_type}/${port} 已存在${plain}"
+            return 0
+        else
+            echo -e "${red}✗ 添加失败: $result${plain}"
+            ((retry++))
+            if [ $retry -lt $max_retries ]; then
+                echo -e "${yellow}第 $retry 次重试...${plain}"
+                sleep 1
+            fi
+        fi
+    done
+    
+    echo -e "${red}端口 ${port_type}/${port} 添加失败，已重试 ${max_retries} 次${plain}"
+    return 1
+}
+
+# 获取随机可用端口并添加到 devil
+get_random_devil_port() {
+    local port_type=$1  # tcp 或 udp
+    local description=$2
+    local min_port=${3:-10000}
+    local max_port=${4:-65000}
+    local max_attempts=50
+    
+    if ! command -v devil >/dev/null 2>&1; then
+        # 如果没有 devil 命令，直接返回随机端口
+        echo $((RANDOM % (max_port - min_port + 1) + min_port))
+        return 0
+    fi
+    
+    local attempt=0
+    while [ $attempt -lt $max_attempts ]; do
+        local port=$((RANDOM % (max_port - min_port + 1) + min_port))
+        
+        # 检查端口是否被占用
+        if ! sockstat -l | grep -q ":$port "; then
+            # 尝试添加端口
+            if add_devil_port "$port" "$port_type" "$description"; then
+                echo "$port"
+                return 0
+            fi
+        fi
+        
+        ((attempt++))
+    done
+    
+    echo -e "${red}无法找到可用端口${plain}" >&2
+    return 1
+}
+
+# ==================== 端口选择函数 ====================
+choose_port() {
+    local port_name=$1
+    local default_port=$2
+    local port_type=${3:-tcp}  # tcp 或 udp
+    
+    echo ""
+    echo -e "${yellow}=== ${port_name} 端口配置 ===${plain}"
+    echo -e "  ${green}1.${plain} 手动指定端口"
+    echo -e "  ${green}2.${plain} 系统随机生成端口"
+    echo ""
+    read -p "请选择 [1-2, 默认2]: " port_choice
+    port_choice=${port_choice:-2}
+    
+    local selected_port=""
+    
+    case "$port_choice" in
+        1)
+            read -p "请输入${port_name}端口 [${default_port}]: " selected_port
+            selected_port=${selected_port:-$default_port}
+            
+            # 使用 devil 添加端口
+            if ! add_devil_port "$selected_port" "$port_type" "x-ui ${port_name}"; then
+                echo -e "${red}端口添加失败，是否重新选择? [y/n]${plain}"
+                read -p "" retry
+                if [[ "$retry" == "y" || "$retry" == "Y" ]]; then
+                    choose_port "$port_name" "$default_port" "$port_type"
+                    return $?
+                else
+                    return 1
+                fi
+            fi
+            ;;
+        2)
+            selected_port=$(get_random_devil_port "$port_type" "x-ui ${port_name}")
+            if [[ -z "$selected_port" ]]; then
+                echo -e "${red}随机端口获取失败${plain}"
+                return 1
+            fi
+            echo -e "${green}随机分配端口: ${selected_port}${plain}"
+            ;;
+        *)
+            selected_port=$(get_random_devil_port "$port_type" "x-ui ${port_name}")
+            echo -e "${green}随机分配端口: ${selected_port}${plain}"
+            ;;
+    esac
+    
+    echo "$selected_port"
+    return 0
+}
+
 #This function will be called when user installed x-ui out of sercurity
 config_after_install() {
     echo -e "${yellow}出于安全考虑，安装/更新完成后需要强制修改端口与账户密码${plain}"
-    read -p "确认是否继续?[y/n]": config_confirm
+    read -p "确认是否继续?[y/n]: " config_confirm
     if [[ x"${config_confirm}" == x"y" || x"${config_confirm}" == x"Y" ]]; then
-        read -p "请设置您的账户名:" config_account
+        read -p "请设置您的账户名: " config_account
         echo -e "${yellow}您的账户名将设定为:${config_account}${plain}"
-        read -p "请设置您的账户密码:" config_password
+        read -p "请设置您的账户密码: " config_password
         echo -e "${yellow}您的账户密码将设定为:${config_password}${plain}"
-        read -p "请设置面板访问端口:" config_port
-        echo -e "${yellow}您的面板访问端口将设定为:${config_port}${plain}"
-        read -p "请设置面板流量监测端口:" config_traffic_port
-        echo -e "${yellow}您的面板流量监测端口将设定为:${config_traffic_port}${plain}"
+        
+        # 选择面板访问端口
+        local panel_port=$(choose_port "面板访问" 54321 "tcp")
+        if [[ $? -ne 0 ]]; then
+            echo -e "${red}端口配置失败${plain}"
+            return 1
+        fi
+        
+        # 选择流量监测端口
+        local traffic_port=$(choose_port "流量监测" 54322 "tcp")
+        if [[ $? -ne 0 ]]; then
+            echo -e "${red}端口配置失败${plain}"
+            return 1
+        fi
+        
         echo -e "${yellow}确认设定,设定中${plain}"
         ./x-ui setting -username ${config_account} -password ${config_password}
         echo -e "${yellow}账户密码设定完成${plain}"
-        ./x-ui setting -port ${config_port}
+        ./x-ui setting -port ${panel_port}
         echo -e "${yellow}面板访问端口设定完成${plain}"
-        ./x-ui setting -trafficport ${config_traffic_port}
+        ./x-ui setting -trafficport ${traffic_port}
         echo -e "${yellow}面板流量监测端口设定完成${plain}"
+        
+        # 保存端口信息
+        echo "${panel_port}" > ~/x-ui/.panel_port
+        echo "${traffic_port}" > ~/x-ui/.traffic_port
     else
         echo -e "${red}已取消,所有设置项均为默认设置,请及时修改${plain}"
         echo -e "如果是全新安装，默认网页端口为 ${green}54321${plain}，默认流量监测端口为 ${green}54322${plain}，用户名和密码默认都是 ${green}admin${plain}"
@@ -58,6 +243,7 @@ config_after_install() {
         echo -e "若想将 54321 和 54322 修改为其它端口，输入 x-ui 命令进行修改，同样也要确保你修改的端口也是放行的"
     fi
 }
+
 stop_x-ui() {
     # 设置你想要杀死的nohup进程的命令名
     xui_com="./x-ui run"
@@ -89,7 +275,6 @@ stop_x-ui() {
             kill -9 $PID
         fi
     fi
-
 }
 
 install_x-ui() {
@@ -174,6 +359,10 @@ SHORTCUT
     
     # 临时添加到当前会话
     export PATH="$HOME/bin:$PATH"
+    
+    # 保存系统类型
+    echo "$SYSTEM_TYPE" > ~/x-ui/.system_type
+    
     echo -e "${green}x-ui 快捷命令创建成功！${plain}"
     
     nohup ./x-ui run > ./x-ui.log 2>&1 &
