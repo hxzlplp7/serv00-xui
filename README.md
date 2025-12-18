@@ -34,11 +34,45 @@
 
 ## 🛠️ 安装 & 升级
 
+### 标准安装 (Serv00/HostUno 非 Root 环境)
+
 在安装前，请先准备好用户名，密码和两个端口（面板访问端口和流量监控端口）！
 
 ```bash
 wget -O x-ui.sh -N --no-check-certificate https://raw.githubusercontent.com/hxzlplp7/serv00-xui/main/x-ui.sh && chmod +x x-ui.sh && ./x-ui.sh
 ```
+
+### MrChrootBSD Root 版本安装 🆕
+
+通过 MrChrootBSD 获取伪 root 权限后，可以在 chroot 环境中以 root 身份安装和运行 X-UI：
+
+```bash
+# 方式一：使用一键安装脚本（推荐）
+curl -sL https://raw.githubusercontent.com/hxzlplp7/MrChrootBSD/main/setup-mrchroot.sh -o setup.sh
+chmod +x setup.sh && ./setup.sh
+
+# 安装完成后使用快捷命令
+source ~/.profile
+xui-root install  # 在 chroot root 环境中安装 X-UI
+xui-root          # 运行 X-UI 管理菜单
+```
+
+```bash
+# 方式二：手动安装
+# 1. 先安装 MrChrootBSD 并配置 chroot 环境
+# 2. 下载 Root 版本安装脚本到 chroot 环境
+curl -sL https://raw.githubusercontent.com/hxzlplp7/serv00-xui/main/x-ui-install-root.sh -o ~/chroot/root/x-ui-install.sh
+
+# 3. 进入 chroot 并安装
+./mrchroot ~/chroot /root/x-ui-install.sh
+```
+
+> 🔥 **MrChrootBSD Root 版本特点:**
+> - 在 chroot 环境中以 **root 权限**运行
+> - **无需 devil 端口管理**，可直接绑定任意端口
+> - 支持安装到系统目录
+> - 可使用 pkg 安装额外依赖
+> - **适合需要更完整 Linux 环境的用户**
 
 ## 📖 使用方法
 
