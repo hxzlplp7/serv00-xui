@@ -523,6 +523,48 @@ get_available_port() {
     return 1
 }
 
+# 检查端口连通性（tcping）
+check_port_connectivity() {
+    local host=$1
+    local port=$2
+    local timeout=${3:-3}
+    
+    LOGD "正在检查 ${host}:${port} 连通性..."
+    
+    # 尝试使用 nc (netcat) 检查端口
+    if command -v nc >/dev/null 2>&1; then
+        # FreeBSD nc 语法
+        if timeout ${timeout} nc -z -w 2 "$host" "$port" >/dev/null 2>&1; then
+            LOGI "✓ 端口 ${host}:${port} 可达"
+            return 0
+        else
+            LOGE "✗ 端口 ${host}:${port} 不可达"
+            return 1
+        fi
+    # 尝试使用 telnet
+    elif command -v telnet >/dev/null 2>&1; then
+        if (echo -e "\x1dclose\x0d" | timeout ${timeout} telnet "$host" "$port" 2>&1 | grep -q "Connected\|Escape"); then
+            LOGI "✓ 端口 ${host}:${port} 可达"
+            return 0
+        else
+            LOGE "✗ 端口 ${host}:${port} 不可达"
+            return 1
+        fi
+    # 尝试使用 /dev/tcp (bash 内建)
+    elif [[ -e /dev/tcp ]]; then
+        if timeout ${timeout} bash -c "echo >/dev/tcp/$host/$port" 2>/dev/null; then
+            LOGI "✓ 端口 ${host}:${port} 可达"
+            return 0
+        else
+            LOGE "✗ 端口 ${host}:${port} 不可达"
+            return 1
+        fi
+    else
+        LOGD "未找到端口检测工具（nc/telnet），跳过连通性检查"
+        return 0
+    fi
+}
+
 # 生成任意门Xray配置
 generate_dokodemo_config() {
     local listen_port=$1
@@ -567,6 +609,24 @@ add_dokodemo_rule() {
         LOGE "x-ui数据库不存在，请先安装x-ui"
         return 1
     fi
+    
+    # 检查目标端口连通性
+    echo ""
+    if ! check_port_connectivity "$target_host" "$target_port" 3; then
+        echo ""
+        LOGD "${yellow}警告: 目标端口不可达，可能原因:${plain}"
+        LOGD "  1. 目标服务器防火墙拦截"
+        LOGD "  2. 网络不通或延迟过高"
+        LOGD "  3. 目标端口未开放"
+        echo ""
+        confirm "是否仍要添加此规则? (不推荐)" "n"
+        if [[ $? != 0 ]]; then
+            LOGE "已取消添加规则"
+            return 1
+        fi
+        LOGD "继续添加规则..."
+    fi
+    echo ""
     
     # 构建 dokodemo-door 入站配置 JSON（紧凑格式，单行）
     local settings_json="{\"address\":\"$target_host\",\"port\":$target_port,\"network\":\"tcp,udp\"}"
