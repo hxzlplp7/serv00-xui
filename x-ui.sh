@@ -10,15 +10,15 @@ plain='\033[0m'
 
 #Add some basic function here
 function LOGD() {
-    echo -e "${yellow}[DEG] $* ${plain}"
+    echo -e "${yellow}[DEG] $* ${plain}" >&2
 }
 
 function LOGE() {
-    echo -e "${red}[ERR] $* ${plain}"
+    echo -e "${red}[ERR] $* ${plain}" >&2
 }
 
 function LOGI() {
-    echo -e "${green}[INF] $* ${plain}"
+    echo -e "${green}[INF] $* ${plain}" >&2
 }
 
 cd ~

@@ -79,40 +79,39 @@ add_devil_port() {
     local max_retries=${4:-5}
     
     if ! command -v devil >/dev/null 2>&1; then
-        echo -e "${yellow}devil 命令不可用，跳过端口添加${plain}"
+        echo -e "${yellow}devil 命令不可用，跳过端口添加${plain}" >&2
         return 0
     fi
     
     # 如果已经添加过，直接返回成功
     if check_devil_port "$port" "$port_type"; then
-        echo -e "${green}端口 ${port_type}/${port} 已存在${plain}"
+        echo -e "${green}✓ 端口 ${port_type}/${port} 已存在${plain}" >&2
         return 0
     fi
     
     local retry=0
     while [ $retry -lt $max_retries ]; do
-        echo -e "${yellow}正在添加端口 ${port_type}/${port}...${plain}"
+        echo -e "${yellow}正在添加端口 ${port_type}/${port}... (尝试 $((retry+1))/${max_retries})${plain}" >&2
         
         # 执行 devil port add
         local result=$(devil port add ${port_type} ${port} "${description}" 2>&1)
         
         if [[ $? -eq 0 ]] || echo "$result" | grep -qi "success\|successfully\|已添加"; then
-            echo -e "${green}✓ 端口 ${port_type}/${port} 添加成功${plain}"
+            echo -e "${green}✓ 端口 ${port_type}/${port} 添加成功${plain}" >&2
             return 0
         elif echo "$result" | grep -qi "already\|exists\|已存在"; then
-            echo -e "${green}✓ 端口 ${port_type}/${port} 已存在${plain}"
+            echo -e "${green}✓ 端口 ${port_type}/${port} 已存在${plain}" >&2
             return 0
         else
-            echo -e "${red}✗ 添加失败: $result${plain}"
+            echo -e "${red}✗ 添加失败: $result${plain}" >&2
             ((retry++))
             if [ $retry -lt $max_retries ]; then
-                echo -e "${yellow}第 $retry 次重试...${plain}"
                 sleep 1
             fi
         fi
     done
     
-    echo -e "${red}端口 ${port_type}/${port} 添加失败，已重试 ${max_retries} 次${plain}"
+    echo -e "${red}端口 ${port_type}/${port} 添加失败，已重试 ${max_retries} 次${plain}" >&2
     return 1
 }
 
