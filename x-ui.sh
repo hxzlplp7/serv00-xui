@@ -1241,13 +1241,65 @@ uninstall() {
         fi
         return 0
     fi
+    
+    # 停止服务
     stop_x-ui
-    crontab -l > x-ui.cron
-    sed -i "" "/x-ui.log/d" x-ui.cron
+    
+    # 删除 devil 端口
+    if command -v devil >/dev/null 2>&1; then
+        echo ""
+        LOGI "正在清理 devil 端口..."
+        
+        # 从数据库中读取所有端口
+        local db_path="$HOME/x-ui/x-ui.db"
+        if [[ -f "$db_path" ]]; then
+            # 获取所有入站端口
+            local ports=$(sqlite3 "$db_path" "SELECT DISTINCT port FROM inbounds;" 2>/dev/null | tr '\n' ' ')
+            
+            if [[ -n "$ports" ]]; then
+                LOGI "发现以下端口: $ports"
+                confirm "是否删除这些 devil 端口?" "y"
+                if [[ $? == 0 ]]; then
+                    for port in $ports; do
+                        # 尝试删除 TCP 端口
+                        if devil port list 2>/dev/null | grep -q "tcp $port"; then
+                            LOGD "删除 TCP 端口: $port"
+                            devil port del tcp $port 2>/dev/null && LOGI "✓ TCP/$port 已删除" || LOGD "TCP/$port 删除失败"
+                        fi
+                        
+                        # 尝试删除 UDP 端口
+                        if devil port list 2>/dev/null | grep -q "udp $port"; then
+                            LOGD "删除 UDP 端口: $port"
+                            devil port del udp $port 2>/dev/null && LOGI "✓ UDP/$port 已删除" || LOGD "UDP/$port 删除失败"
+                        fi
+                    done
+                else
+                    LOGD "跳过端口删除"
+                fi
+            else
+                LOGD "未发现需要删除的端口"
+            fi
+        fi
+        echo ""
+    fi
+    
+    # 删除定时任务
+    crontab -l > x-ui.cron 2>/dev/null
+    sed -i "" "/x-ui.log/d" x-ui.cron 2>/dev/null
+    sed -i "" "/xray/d" x-ui.cron 2>/dev/null
+    sed -i "" "/x-ui run/d" x-ui.cron 2>/dev/null
     crontab x-ui.cron
     rm x-ui.cron
+    
+    # 删除文件
     cd ~
     rm -rf ~/x-ui/
+    
+    # 删除快捷命令
+    if [[ -f ~/bin/x-ui ]]; then
+        rm -f ~/bin/x-ui
+        LOGI "已删除快捷命令"
+    fi
 
     echo ""
     echo -e "卸载成功，如果你想删除此脚本，则退出脚本后运行 ${green}rm ~/x-ui.sh -f${plain} 进行删除"
