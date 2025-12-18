@@ -48,7 +48,7 @@ wget -O x-ui.sh -N --no-check-certificate https://raw.githubusercontent.com/hxzl
 
 ```bash
 # 方式一：使用一键安装脚本（推荐）
-curl -sL https://raw.githubusercontent.com/hxzlplp7/MrChrootBSD/main/setup-mrchroot.sh -o setup.sh
+curl -sL https://raw.githubusercontent.com/hxzlplp7/GostXray/main/setup-mrchroot.sh -o setup.sh
 chmod +x setup.sh && ./setup.sh
 
 # 安装完成后使用快捷命令
