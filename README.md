@@ -78,10 +78,10 @@ wget -O x-ui.sh -N --no-check-certificate https://raw.githubusercontent.com/hxzl
   13. 设置 x-ui 开机自启
   14. 取消 x-ui 开机自启
 ————————————————
+  15. Xray 任意门中转 [新功能]
+————————————————
   16. 查看运行日志
   17. 清空日志
-————————————————
-  15. Xray 任意门中转 [新功能]
 ————————————————
  
 面板状态: 已运行

@@ -1567,10 +1567,10 @@ show_menu() {
   ${green}13.${plain} 设置 x-ui 开机自启
   ${green}14.${plain} 取消 x-ui 开机自启
 ————————————————
+  ${cyan}15.${plain} ${cyan}Xray 任意门中转${plain} ${yellow}[新功能]${plain}
+————————————————
   ${green}16.${plain} 查看运行日志
   ${green}17.${plain} 清空日志
-————————————————
-  ${cyan}15.${plain} ${cyan}Xray 任意门中转${plain} ${yellow}[新功能]${plain}
 ————————————————
  "
     show_status
