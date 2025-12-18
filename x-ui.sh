@@ -568,16 +568,8 @@ add_dokodemo_rule() {
         return 1
     fi
     
-    # 构建 dokodemo-door 入站配置 JSON
-    local settings_json=$(cat << SETTINGS
-{
-    "address": "$target_host",
-    "port": $target_port,
-    "network": "tcp,udp"
-}
-SETTINGS
-)
-    
+    # 构建 dokodemo-door 入站配置 JSON（紧凑格式，单行）
+    local settings_json="{\"address\":\"$target_host\",\"port\":$target_port,\"network\":\"tcp,udp\"}"
     local stream_settings='{"network":"tcp","security":"none","tcpSettings":{"header":{"type":"none"}}}'
     local sniffing='{"enabled":true,"destOverride":["http","tls"]}'
     
@@ -592,6 +584,7 @@ SETTINGS
     fi
     
     # 插入新的入站规则
+    # 注意：使用紧凑的单行JSON，避免换行符问题
     sqlite3 "$db_path" << SQL
 INSERT INTO inbounds (user_id, up, down, total, remark, enable, expiry_time, listen, port, protocol, settings, stream_settings, tag, sniffing)
 VALUES (
