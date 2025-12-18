@@ -476,7 +476,6 @@ XRAY_KEEPALIVE
     echo -e "${green}x-ui update${plain}         - 更新 x-ui 面板"
     echo -e "${green}x-ui install${plain}        - 安装 x-ui 面板"
     echo -e "${green}x-ui uninstall${plain}      - 卸载 x-ui 面板"
-    echo -e "${green}x-ui dokodemo${plain}       - 任意门中转菜单"
     echo -e "----------------------------------------------"
     echo -e "${yellow}提示: 如果 x-ui 命令不可用，请执行: source ~/.bashrc 或重新登录${plain}"
     echo -e "${cyan}提示: xray 保活脚本已设置，每分钟自动检查并启动 xray${plain}"
