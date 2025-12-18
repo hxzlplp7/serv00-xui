@@ -637,15 +637,14 @@ add_dokodemo_rule() {
     fi
     echo ""
     
-    # 构建 dokodemo-door 入站配置 JSON（紧凑格式，单行）
-    local settings_json="{\"address\":\"$target_host\",\"port\":$target_port,\"network\":\"tcp,udp\"}"
+    # 构建 dokodemo-door 入站配置 JSON（固定使用 tcp）
+    local settings_json="{\"address\":\"$target_host\",\"port\":$target_port,\"network\":\"tcp\"}"
     local stream_settings='{"network":"tcp","security":"none","tcpSettings":{"header":{"type":"none"}}}'
     local sniffing='{"enabled":true,"destOverride":["http","tls"]}'
     
-    # 使用 sqlite3 直接插入到数据库
     local remark="[中转]${node_name}"
     
-    # 检查端口是否已存在
+    # 检查端口是否已存在于入站表
     local existing=$(sqlite3 "$db_path" "SELECT id FROM inbounds WHERE port = $listen_port;" 2>/dev/null)
     if [[ -n "$existing" ]]; then
         LOGE "端口 $listen_port 已被其他入站规则使用"
@@ -653,55 +652,41 @@ add_dokodemo_rule() {
     fi
     
     # 插入新的入站规则
-    # 注意：使用紧凑的单行JSON，避免换行符问题
-    sqlite3 "$db_path" << SQL
+    sqlite3 "$db_path" <<SQL
 INSERT INTO inbounds (user_id, up, down, total, remark, enable, expiry_time, listen, port, protocol, settings, stream_settings, tag, sniffing)
-VALUES (
-    1,
-    0,
-    0,
-    0,
-    '$remark',
-    1,
-    0,
-    '',
-    $listen_port,
-    'dokodemo-door',
-    '$settings_json',
-    '$stream_settings',
-    '$rule_tag',
-    '$sniffing'
-);
+VALUES (1,0,0,0,'$remark',1,0,'',$listen_port,'dokodemo-door','$settings_json','$stream_settings','$rule_tag','$sniffing');
 SQL
-
-    if [[ $? -eq 0 ]]; then
-        LOGI "任意门规则已添加到数据库: 本地端口 $listen_port -> $target_host:$target_port"
-        
-        # 保存规则信息到本地文件（用于显示）
-        local timestamp=$(date +%s)
-        echo "{\"tag\":\"$rule_tag\",\"listen_port\":$listen_port,\"target_host\":\"$target_host\",\"target_port\":$target_port,\"node_name\":\"$node_name\",\"created_at\":$timestamp}" >> "$DOKODEMO_DIR/rules.log"
-        
-        # 重启 x-ui 和 Xray 使配置生效
-        LOGI "正在重启 x-ui 使配置生效..."
-        stop_x-ui
-        sleep 1
-        cd ~/x-ui
-        nohup ./x-ui run > ./x-ui.log 2>&1 &
-        sleep 2
-        
-        # 检查是否启动成功
-        local pid=$(pgrep -f "./x-ui run")
-        if [[ -n "$pid" ]]; then
-            LOGI "x-ui 重启成功，规则已生效！"
-        else
-            LOGE "x-ui 重启失败，请手动重启"
-        fi
-        
-        return 0
-    else
-        LOGE "添加规则失败"
+    
+    if [[ $? -ne 0 ]]; then
+        LOGE "向数据库写入规则失败"
         return 1
     fi
+    
+    LOGI "任意门规则已添加到数据库: 本地端口 $listen_port -> $target_host:$target_port"
+    
+    # 保存规则信息到本地文件（用于显示）
+    local timestamp=$(date +%s)
+    echo "{\"tag\":\"$rule_tag\",\"listen_port\":$listen_port,\"target_host\":\"$target_host\",\"target_port\":$target_port,\"node_name\":\"$node_name\",\"created_at\":$timestamp}" >> "$DOKODEMO_DIR/rules.log"
+    
+    # 重启 x-ui 使配置生效
+    LOGI "正在重启 x-ui 使配置生效..."
+    stop_x-ui
+    sleep 1
+    cd ~/x-ui
+    nohup ./x-ui run > ./x-ui.log 2>&1 &
+    sleep 2
+    
+    # 检查 xray 是否成功启动
+    if pgrep -f "xray-" > /dev/null; then
+        LOGI "xray 已成功启动"
+    else
+        LOGE "xray 启动失败，请检查日志"
+        LOGE "--- xray.log 内容开始 ---"
+        cat ~/x-ui/xray.log | head -n 20
+        LOGE "--- xray.log 内容结束 ---"
+    fi
+    
+    return 0
 }
 
 # 生成中转后的节点链接
