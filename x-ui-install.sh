@@ -364,7 +364,104 @@ SHORTCUT
     
     echo -e "${green}x-ui 快捷命令创建成功！${plain}"
     
+    # 创建 xray 保活脚本
+    echo -e "${yellow}正在创建 xray 保活脚本...${plain}"
+    cat > ~/x-ui/xray_keepalive.sh << 'XRAY_KEEPALIVE'
+#!/bin/bash
+
+# xray 保活脚本
+cd ~/x-ui
+
+# 检测系统架构
+uname_output=$(uname -a)
+if echo "$uname_output" | grep -Eqi "freebsd"; then
+    release="freebsd"
+else
+    release="freebsd"
+fi
+
+if echo "$uname_output" | grep -Eqi 'x86_64|amd64|x64'; then
+    arch="amd64"
+elif echo "$uname_output" | grep -Eqi 'aarch64|arm64'; then
+    arch="arm64"
+else
+    arch="amd64"
+fi
+
+XRAY_BIN="bin/xray-${release}-${arch}"
+XRAY_CONFIG="bin/config.json"
+
+# 检查 xray 二进制文件是否存在
+if [[ ! -f "$XRAY_BIN" ]]; then
+    echo "$(date): xray 二进制文件不存在: $XRAY_BIN" >> xray_keepalive.log
+    exit 1
+fi
+
+# 检查配置文件是否存在
+if [[ ! -f "$XRAY_CONFIG" ]]; then
+    echo "$(date): xray 配置文件不存在，可能还没有添加入站规则" >> xray_keepalive.log
+    exit 0
+fi
+
+# 检查 xray 进程是否在运行
+if ! pgrep -f "$XRAY_BIN" > /dev/null; then
+    echo "$(date): xray 未运行，正在启动..." >> xray_keepalive.log
+    nohup ./$XRAY_BIN -c $XRAY_CONFIG > xray.log 2>&1 &
+    sleep 2
+    
+    if pgrep -f "$XRAY_BIN" > /dev/null; then
+        echo "$(date): xray 启动成功" >> xray_keepalive.log
+    else
+        echo "$(date): xray 启动失败" >> xray_keepalive.log
+    fi
+fi
+XRAY_KEEPALIVE
+    chmod +x ~/x-ui/xray_keepalive.sh
+    echo -e "${green}xray 保活脚本创建成功${plain}"
+    
+    # 添加定时任务
+    echo -e "${yellow}正在设置定时任务...${plain}"
+    crontab -l > x-ui.cron 2>/dev/null || true
+    
+    # 删除旧的任务
+    sed -i "" "/x-ui.log/d" x-ui.cron 2>/dev/null || true
+    sed -i "" "/xray_keepalive/d" x-ui.cron 2>/dev/null || true
+    sed -i "" "/x-ui run/d" x-ui.cron 2>/dev/null || true
+    
+    # 添加新任务
+    echo "# x-ui 日志清理" >> x-ui.cron
+    echo "0 0 * * * cd $cur_dir/x-ui && cat /dev/null > x-ui.log" >> x-ui.cron
+    echo "0 0 * * * cd $cur_dir/x-ui && cat /dev/null > xray.log" >> x-ui.cron
+    echo "0 0 * * * cd $cur_dir/x-ui && cat /dev/null > xray_keepalive.log" >> x-ui.cron
+    echo "" >> x-ui.cron
+    echo "# x-ui 面板开机自启" >> x-ui.cron
+    echo "@reboot cd $cur_dir/x-ui && nohup ./x-ui run > ./x-ui.log 2>&1 &" >> x-ui.cron
+    echo "" >> x-ui.cron
+    echo "# xray 保活（每分钟检查一次）" >> x-ui.cron
+    echo "*/1 * * * * cd $cur_dir/x-ui && ./xray_keepalive.sh" >> x-ui.cron
+    
+    crontab x-ui.cron
+    rm x-ui.cron
+    echo -e "${green}定时任务设置完成${plain}"
+    
+    # 启动 x-ui 面板
     nohup ./x-ui run > ./x-ui.log 2>&1 &
+    sleep 2
+    
+    # 启动 xray（如果有配置文件）
+    if [[ -f bin/config.json ]]; then
+        echo -e "${yellow}正在启动 xray...${plain}"
+        nohup ./bin/xray-${release}-${arch} -c bin/config.json > xray.log 2>&1 &
+        sleep 2
+        if pgrep -f "xray-${release}-${arch}" > /dev/null; then
+            echo -e "${green}xray 启动成功${plain}"
+        else
+            echo -e "${yellow}xray 启动失败，请在面板中添加入站规则后会自动启动${plain}"
+        fi
+    else
+        echo -e "${yellow}未检测到 xray 配置文件，请在面板中添加入站规则${plain}"
+    fi
+    
     echo -e "${green}x-ui v${last_version}${plain} 安装完成，面板已启动，"
     echo -e ""
     echo -e "${cyan}x-ui 快捷命令使用方法:${plain}"
@@ -382,6 +479,7 @@ SHORTCUT
     echo -e "${green}x-ui dokodemo${plain}       - 任意门中转菜单"
     echo -e "----------------------------------------------"
     echo -e "${yellow}提示: 如果 x-ui 命令不可用，请执行: source ~/.bashrc 或重新登录${plain}"
+    echo -e "${cyan}提示: xray 保活脚本已设置，每分钟自动检查并启动 xray${plain}"
 }
 
 echo -e "${green}开始安装${plain}"
